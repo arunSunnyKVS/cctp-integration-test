@@ -4,12 +4,14 @@
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
     "test:deposit": "ts-node testDeposit.ts",
-    "test:deposit:devnet": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node testDeposit.ts"
+    "test:deposit:devnet": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node testDeposit.ts",
+    "get-attestation": "ts-node getAttestation.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
     "@solana/spl-token": "^0.4.13",
-    "@solana/web3.js": "^1.98.2"
+    "@solana/web3.js": "^1.98.2",
+    "axios": "^1.10.0"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.0",
