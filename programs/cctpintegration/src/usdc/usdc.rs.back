@@ -1,0 +1,15 @@
+use anchor_lang::prelude::*;
+
+pub struct SendUsdc<'info> {
+    /// CHECK: We're assuming authority is a signer and valid
+    #[account(signer)]
+    pub authority: AccountInfo<'info>,  // User sending the tokens
+
+    #[account(mut)]
+    pub from: Account<'info, TokenAccount>, // User's USDC ATA
+
+    #[account(mut)]
+    pub to: Account<'info, TokenAccount>,   // Destination USDC ATA
+
+    pub token_program: Program<'info, Token>,
+}

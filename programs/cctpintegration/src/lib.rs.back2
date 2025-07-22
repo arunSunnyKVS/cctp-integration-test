@@ -1,0 +1,154 @@
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount , Transfer};
+
+declare_id!("FZTigSHkQ8RZsrqbER8kKezA3rHjTHJ8nRwoViCYtJNT");
+
+#[program]
+
+pub mod cctpintegration {
+    use super::*;
+
+    pub fn initialize(ctx :Context<InitializeContractConfig>,fee_percentage:u8) ->Result<()> {
+        require!(fee_percentage <= 100, CustomError::InvalidFee);
+        let config = &mut ctx.accounts.config;
+        config.fee_percentage = fee_percentage;
+        config.treasury = ctx.accounts.treasury.key();
+        config.authority = ctx.accounts.payer.key();
+        config.bump = ctx.bumps.config;
+        Ok(())
+    }
+
+
+    // Update treasury address
+    pub fn update_treasury(ctx: Context<UpdateTreasury>) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        require_keys_eq!(config.authority, ctx.accounts.authority.key(), CustomError::Unauthorized);
+
+        config.treasury = ctx.accounts.new_treasury.key();
+        Ok(())
+    }
+
+    // Update fee percentage
+    pub fn update_fee(ctx: Context<UpdateFee>, new_fee: u8) -> Result<()> {
+        require!(new_fee <= 100, CustomError::InvalidFee);
+
+        let config = &mut ctx.accounts.config;
+        require_keys_eq!(config.authority, ctx.accounts.authority.key(), CustomError::Unauthorized);
+
+        config.fee_percentage = new_fee;
+        Ok(())
+    }
+
+    pub fn transfer_with_fee(ctx:Context<TransferWithFee>,amount:u64) -> Result<()> {
+        let config = &ctx.accounts.config;
+        let fee =amount*(config.fee_percentage as u64)/100;
+                require_keys_eq!(ctx.accounts.treasury_token_account.key(), config.treasury, CustomError::Unauthorized);
+
+
+  let remaining = amount - fee;
+                    // Transfer fee to treasury
+    let cpi_fee = Transfer {
+            from: ctx.accounts.sender_token_account.to_account_info(),
+            to: ctx.accounts.treasury_token_account.to_account_info(),
+            authority: ctx.accounts.sender.to_account_info(),
+    };
+
+            let cpi_ctx_fee = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_fee);
+        token::transfer(cpi_ctx_fee, fee)?;
+
+        // Transfer remaining to recipient
+        let cpi_transfer = Transfer {
+            from: ctx.accounts.sender_token_account.to_account_info(),
+            to: ctx.accounts.recipient_token_account.to_account_info(),
+            authority: ctx.accounts.sender.to_account_info(),
+        };
+        let cpi_ctx_transfer = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_transfer);
+        token::transfer(cpi_ctx_transfer, remaining)?;
+        Ok(())
+    }
+
+
+}
+
+
+#[derive(Accounts)]
+pub struct InitializeContractConfig<'info> {
+    #[account(init, 
+        payer = payer, 
+        space = 8 + 1 + 32 +32+1,
+        seeds = [b"config"],
+        bump,
+    )]
+    pub config: Account<'info, Config>,
+
+    #[account()]
+    pub treasury: Account<'info,TokenAccount>,
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+
+    pub token_program: Program<'info,Token>
+}
+
+#[derive(Accounts)]
+pub struct UpdateFee<'info> {
+    #[account(mut, has_one = authority)]
+    pub config: Account<'info, Config>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+
+
+#[account]
+pub struct Config{
+   pub fee_percentage:u8,
+   pub treasury:Pubkey,
+   pub authority:Pubkey,
+   pub bump:u8,
+}
+
+#[derive(Accounts)]
+
+pub struct UpdateTreasury<'info>{
+    #[account(mut, has_one = authority)]
+    pub config: Account<'info, Config>,
+
+    #[account()]
+    pub new_treasury: Account<'info,TokenAccount>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+#[error_code]
+pub enum CustomError {
+    #[msg("Invalid fee percentage")]
+    InvalidFee,
+    #[msg("Unauthorized action")]
+    Unauthorized,
+}   
+
+#[derive(Accounts)]
+pub struct TransferWithFee<'info> {
+    #[account(mut)]
+    pub sender: Signer<'info>,
+
+    #[account(mut, constraint = sender_token_account.mint == recipient_token_account.mint)]
+    #[account(constraint = sender_token_account.mint == treasury_token_account.mint)]
+
+    pub sender_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub recipient_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub treasury_token_account: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+
+    pub config: Account<'info, Config>,
+}

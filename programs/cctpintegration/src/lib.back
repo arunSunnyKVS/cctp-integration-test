@@ -1,0 +1,50 @@
+pub mod config;
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount as SplTokenAccount, Transfer};
+use config::*;
+declare_id!("DX7NwMYrqVTmJiY4ScFYeQEhdjnp258ktvDNjyxCSzui");
+
+#[program]
+
+pub mod cctpintegration {
+    use super::*;
+
+    // pub fn initialize_config(ctx: Context<InitializeConfig>, fee_percentage: u8) -> Result<()> {
+    //     let config = &mut ctx.accounts.config;
+    //     config.fee_percentage = fee_percentage;
+    //     config.treasury = ctx.accounts.treasury.key();
+    //     Ok(())
+    // }
+    pub fn send_usdc(ctx: Context<SendUsdc>, amount: u64) -> Result<()> {
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.from.to_account_info(),
+            to: ctx.accounts.to.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
+        };
+
+        let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+
+        token::transfer(cpi_ctx, amount)?;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+
+pub struct SendUsdc<'info> {
+    /// CHECK: This is a signer and will be verified in the instruction
+    pub authority: Signer<'info>,
+
+    #[account(mut)]
+    pub from: Account<'info, SplTokenAccount>,
+
+    #[account(mut)]
+    pub to: Account<'info, SplTokenAccount>,  
+
+    #[account(mut)]
+    pub treasury_token_account: Account<'info, SplTokenAccount>,
+
+    pub config: Account<'info, Config>,      
+
+    pub token_program: Program<'info, Token>, 
+}
