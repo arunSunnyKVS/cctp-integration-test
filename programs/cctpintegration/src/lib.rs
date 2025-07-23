@@ -1,26 +1,14 @@
 #![allow(warnings)]
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{instruction::{Instruction, AccountMeta}, program::invoke, pubkey::Pubkey, system_program};
+use anchor_lang::solana_program::{instruction::{Instruction, AccountMeta}, program::invoke};
 use anchor_spl::token::{self, Token, TokenAccount, Transfer, transfer, Mint};
-use std::str::FromStr;
-// use token_messenger_minter::cpi::accounts::DepositForBurn;
-// Declare the pda_derivations module
-pub mod pda_derivations;
+use token_messenger_minter_v2::token_messenger_v2::instructions::{DepositForBurnContext, DepositForBurnParams};
+use message_transmitter_v2::instructions::{SendMessageContext, SendMessageParams};
+
 
 declare_id!("CABbkyFnKoZ9UpRnBu8YFaCBdBG1xMZPMuc6GmrnogbT");
 
-// CCTP Program IDs
-pub const MESSAGE_TRANSMITTER: &str = "CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd";
-pub const TOKEN_MESSENGER_MINTER: &str = "CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3";
 
-// SPL Token Program ID
-pub const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-
-// System Program ID
-pub const SYSTEM_PROGRAM_ID: &str = "11111111111111111111111111111111";
-
-const DEPOSIT_FOR_BURN_DISCRIMINATOR: [u8; 8] = [215, 60, 61, 46, 114, 55, 128, 176];
-// CCTP Instruction Discriminators
 
 
 #[program]
@@ -63,34 +51,26 @@ pub mod bridging_kit {
     // New instruction to initiate cross-chain transfer via CCTP
     pub fn invoke_cctp_token_messenger(
         ctx: Context<CctpTransfer>,
-        params: CctpMinterInvokeParams,
+        params: DepositForBurnParams,
     ) -> Result<()> {
-        // Convert string constants to Pubkeys
-        let token_messenger_minter_program_id = Pubkey::from_str(TOKEN_MESSENGER_MINTER).unwrap();
-        let message_transmitter_program_id = Pubkey::from_str(MESSAGE_TRANSMITTER).unwrap();
-        let burn_token_mint = ctx.accounts.user_usdc.mint;
-
-        // Derive CCTP PDAs
-        let (token_messenger_pda, _) = pda_derivations::derive_token_messenger_pda(&token_messenger_minter_program_id);
-        let (token_minter_pda, _) = pda_derivations::derive_token_minter_pda(&token_messenger_minter_program_id);
-        let (local_token_pda, _) = pda_derivations::derive_local_token_pda(&token_messenger_minter_program_id, &burn_token_mint);
-        let (remote_token_messenger_pda, _) = pda_derivations::derive_remote_token_messenger_pda(&token_messenger_minter_program_id, params.destination_domain);
-        let (message_transmitter_pda, _) = pda_derivations::derive_message_transmitter_pda(&message_transmitter_program_id);
-        let (sender_authority_pda, _) = pda_derivations::derive_sender_authority_pda(&token_messenger_minter_program_id, 0);
+        // Instruction discriminator for deposit_for_burn
+        const DEPOSIT_FOR_BURN_DISCRIMINATOR: [u8; 8] = [215, 60, 61, 46, 114, 55, 128, 176];
         
-        // Log the derived PDAs for verification
-        msg!("Token Messenger PDA: {}", token_messenger_pda);
-        msg!("Token Minter PDA: {}", token_minter_pda);
-        msg!("Local Token PDA: {}", local_token_pda);
-        msg!("Remote Token Messenger PDA: {}", remote_token_messenger_pda);
-        msg!("Message Transmitter PDA: {}", message_transmitter_pda);
-        msg!("Sender Authority PDA: {}", sender_authority_pda);
+        // Create instruction data for deposit_for_burn
+        let mut data = Vec::new();
+        data.extend_from_slice(&DEPOSIT_FOR_BURN_DISCRIMINATOR);
+        data.extend_from_slice(&params.amount.to_le_bytes());
+        data.extend_from_slice(&params.destination_domain.to_le_bytes());
+        data.extend_from_slice(&params.mint_recipient.to_bytes());
+        data.extend_from_slice(&params.destination_caller.to_bytes());
+        data.extend_from_slice(&params.max_fee.to_le_bytes());
+        data.extend_from_slice(&params.min_finality_threshold.to_le_bytes());
         
         // Create account metas for the deposit_for_burn instruction
         let account_metas = vec![
             AccountMeta::new(ctx.accounts.user.key(), true), // owner
             AccountMeta::new(ctx.accounts.event_rent_payer.key(), true), // event_rent_payer
-            AccountMeta::new_readonly(sender_authority_pda, false), // sender_authority_pda
+            AccountMeta::new_readonly(ctx.accounts.sender_authority_pda.key(), false), // sender_authority_pda
             AccountMeta::new(ctx.accounts.user_usdc.key(), false), // burn_token_account
             AccountMeta::new_readonly(ctx.accounts.denylist_account.key(), false), // denylist_account
             AccountMeta::new(ctx.accounts.message_transmitter.key(), false), // message_transmitter
@@ -104,8 +84,6 @@ pub mod bridging_kit {
             AccountMeta::new_readonly(ctx.accounts.token_messenger_minter_program.key(), false), // token_messenger_minter_program
             AccountMeta::new_readonly(ctx.accounts.token_program.key(), false), // token_program
             AccountMeta::new_readonly(ctx.accounts.system_program.key(), false), // system_program
-            AccountMeta::new_readonly(ctx.accounts.event_authority.key(), false), // event_authority
-            AccountMeta::new_readonly(ctx.accounts.program.key(), false), // program
         ];
 
         // Create account infos for the CPI call
@@ -126,22 +104,10 @@ pub mod bridging_kit {
             ctx.accounts.token_messenger_minter_program.to_account_info(),
             ctx.accounts.token_program.to_account_info(),
             ctx.accounts.system_program.to_account_info(),
-            ctx.accounts.event_authority.to_account_info(),
-            ctx.accounts.program.to_account_info(),
         ];
 
-        // Create instruction data for deposit_for_burn
-        let mut data = Vec::new();
-        data.extend_from_slice(&DEPOSIT_FOR_BURN_DISCRIMINATOR); // Instruction discriminator
-        data.extend_from_slice(&params.amount.to_le_bytes());
-        data.extend_from_slice(&params.destination_domain.to_le_bytes());
-        data.extend_from_slice(&params.mint_recipient.to_bytes());
-        data.extend_from_slice(&params.destination_caller.to_bytes());
-        data.extend_from_slice(&params.max_fee.to_le_bytes());
-        data.extend_from_slice(&params.min_finality_threshold.to_le_bytes());
-        
         let instruction = Instruction {
-            program_id: token_messenger_minter_program_id,
+            program_id: ctx.accounts.token_messenger_minter_program.key(),
             accounts: account_metas,
             data: data,
         };
@@ -153,42 +119,63 @@ pub mod bridging_kit {
         Ok(())
     }
 
-    pub fn call_deposit_for_burn(ctx: Context<DepositForBurnContext>, params: DepositForBurnParams) -> Result<()> {
-
+    // Function to call message transmitter's send_message
+    pub fn invoke_message_transmitter_send(
+        ctx: Context<MessageTransmitterSendContext>,
+        params: SendMessageParams,
+    ) -> Result<()> {
+        // Instruction discriminator for send_message
+        const SEND_MESSAGE_DISCRIMINATOR: [u8; 8] = [183, 18, 70, 156, 148, 109, 161, 34];
+        
+        // Create instruction data for send_message
+        let mut data = Vec::new();
+        data.extend_from_slice(&SEND_MESSAGE_DISCRIMINATOR);
+        data.extend_from_slice(&params.destination_domain.to_le_bytes());
+        data.extend_from_slice(&params.recipient.to_bytes());
+        data.extend_from_slice(&params.destination_caller.to_bytes());
+        data.extend_from_slice(&params.min_finality_threshold.to_le_bytes());
+        data.extend_from_slice(&(params.message_body.len() as u32).to_le_bytes());
+        data.extend_from_slice(&params.message_body);
+        
+        // Create account metas for the send_message instruction
         let account_metas = vec![
-            AccountMeta::new(ctx.accounts.user.to_account_info().key(), true),
-            AccountMeta::new(ctx.accounts.token_messenger_minter.to_account_info().key(), true),
+            AccountMeta::new(ctx.accounts.event_rent_payer.key(), true), // event_rent_payer
+            AccountMeta::new(ctx.accounts.sender_authority_pda.key(), true), // sender_authority_pda
+            AccountMeta::new(ctx.accounts.message_transmitter.key(), false), // message_transmitter
+            AccountMeta::new(ctx.accounts.message_sent_event_data.key(), true), // message_sent_event_data
+            AccountMeta::new_readonly(ctx.accounts.sender_program.key(), false), // sender_program
+            AccountMeta::new_readonly(ctx.accounts.system_program.key(), false), // system_program
         ];
 
+        // Create account infos for the CPI call
         let account_infos = vec![
-    ctx.accounts.user.to_account_info(),
-    ctx.accounts.token_messenger_minter.to_account_info(),
-];
+            ctx.accounts.event_rent_payer.to_account_info(),
+            ctx.accounts.sender_authority_pda.to_account_info(),
+            ctx.accounts.message_transmitter.to_account_info(),
+            ctx.accounts.message_sent_event_data.to_account_info(),
+            ctx.accounts.sender_program.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+        ];
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&params.amount.to_le_bytes());
-    data.extend_from_slice(&params.destination_domain.to_le_bytes());
-    data.extend_from_slice(&params.recipient);
-        
         let instruction = Instruction {
-            program_id: Pubkey::from_str(TOKEN_MESSENGER_MINTER).unwrap(),
+            program_id: ctx.accounts.message_transmitter_program.key(),
             accounts: account_metas,
             data: data,
         };
+
+        // Execute the CPI call
         invoke(&instruction, &account_infos)?;
+        
+        msg!("Message transmitter send_message instruction executed successfully");
         Ok(())
     }
+
+
+
+
 }
 
-#[derive(Accounts)]
-pub struct DepositForBurnContext<'info> {
-    #[account(mut)]
-    pub user: Signer<'info>,
 
-    /// CHECK: This is the CCTP Token Messenger Minter program account that we're calling via CPI
-    #[account(mut)]
-    pub token_messenger_minter: AccountInfo<'info>,
-}
 
 #[derive(Accounts)]
 pub struct CctpTransfer<'info> {
@@ -208,9 +195,6 @@ pub struct CctpTransfer<'info> {
 
     /// CHECK: Sender authority PDA for CCTP
     pub sender_authority_pda: AccountInfo<'info>,
-
-    /// CHECK: Denylist account for CCTP
-    pub denylist_account: AccountInfo<'info>,
 
     /// CHECK: Message transmitter account for CCTP
     #[account(mut)]
@@ -253,6 +237,40 @@ pub struct CctpTransfer<'info> {
 
     /// CHECK: Program account
     pub program: AccountInfo<'info>,
+
+    /// CHECK: Denylist account for CCTP
+    pub denylist_account: AccountInfo<'info>,
+}
+
+
+
+
+
+#[derive(Accounts)]
+pub struct MessageTransmitterSendContext<'info> {
+    /// CHECK: Event rent payer for message transmitter events
+    #[account(mut)]
+    pub event_rent_payer: Signer<'info>,
+
+    /// CHECK: Sender authority PDA for message transmitter
+    pub sender_authority_pda: AccountInfo<'info>,
+
+    /// CHECK: Message transmitter account
+    #[account(mut)]
+    pub message_transmitter: AccountInfo<'info>,
+
+    /// CHECK: Message sent event data account
+    #[account(mut)]
+    pub message_sent_event_data: Signer<'info>,
+
+    /// CHECK: Sender program (e.g., TokenMessenger)
+    pub sender_program: AccountInfo<'info>,
+
+    /// CHECK: System program
+    pub system_program: AccountInfo<'info>,
+
+    /// CHECK: Message transmitter program
+    pub message_transmitter_program: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -273,22 +291,11 @@ pub struct BridgeContext<'info> {
 }
 
 
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct CctpMinterInvokeParams{
-    pub amount: u64,
-    pub destination_domain: u32,
-    pub mint_recipient: Pubkey,
-    pub destination_caller: Pubkey,
-    pub max_fee: u64,
-    pub min_finality_threshold: u32,
-}
 
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct DepositForBurnParams {
-    pub amount: u64,
-    pub destination_domain: u32,
-    pub recipient: [u8; 32],
-}
+
+
+
+
 
 #[error_code]
 pub enum ErrorCode {

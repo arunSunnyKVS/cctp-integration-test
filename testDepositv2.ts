@@ -62,13 +62,13 @@ async function testCctpInvoke() {
     console.log("👤 Event Rent Payer:", eventRentPayer.publicKey.toString());
     console.log("👤 Message Sent Event Data:", messageSentEventData.publicKey.toString());
 
-    // Airdrop SOL to additional signers
-    console.log("💰 Airdropping SOL to additional signers...");
-    const eventRentPayerSignature = await connection.requestAirdrop(eventRentPayer.publicKey, LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(eventRentPayerSignature);
+    // // Airdrop SOL to additional signers
+    // console.log("💰 Airdropping SOL to additional signers...");
+    // const eventRentPayerSignature = await connection.requestAirdrop(eventRentPayer.publicKey, LAMPORTS_PER_SOL);
+    // await connection.confirmTransaction(eventRentPayerSignature);
     
-    const messageSentEventDataSignature = await connection.requestAirdrop(messageSentEventData.publicKey, LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(messageSentEventDataSignature);
+    // const messageSentEventDataSignature = await connection.requestAirdrop(messageSentEventData.publicKey, LAMPORTS_PER_SOL);
+    // await connection.confirmTransaction(messageSentEventDataSignature);
 
     // Use existing USDC mint on devnet
     const usdcMint = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
@@ -87,9 +87,9 @@ async function testCctpInvoke() {
       console.log("💰 No USDC balance found - you'll need to get some USDC from a faucet");
     }
 
-    // CCTP Program IDs (Devnet)
-    const tokenMessengerMinter = new PublicKey("CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3");
-    const messageTransmitter = new PublicKey("CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd");
+    // CCTP Program IDs (Devnet) - Updated to match the program constants
+    const tokenMessengerMinter = new PublicKey("CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe");
+    const messageTransmitter = new PublicKey("CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC");
     const tokenProgram = TOKEN_PROGRAM_ID;
     const systemProgram = SystemProgram.programId;
 
@@ -128,13 +128,13 @@ async function testCctpInvoke() {
       tokenMessengerMinter
     );
 
-    const [denylistAccount] = PublicKey.findProgramAddressSync(
-      [Buffer.from("denylist_account"), user.publicKey.toBuffer()],
+    const [eventAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from("__event_authority")],
       tokenMessengerMinter
     );
 
-    const [eventAuthority] = PublicKey.findProgramAddressSync(
-      [Buffer.from("__event_authority")],
+    const [denylistAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from("denylist_account"), user.publicKey.toBuffer()],
       tokenMessengerMinter
     );
 
@@ -144,17 +144,23 @@ async function testCctpInvoke() {
     console.log("✅ Remote Token Messenger PDA:", remoteTokenMessengerPda.toString());
     console.log("✅ Message Transmitter PDA:", messageTransmitterPda.toString());
     console.log("✅ Sender Authority PDA:", senderAuthorityPda.toString());
-    console.log("✅ Denylist Account:", denylistAccount.toString());
     console.log("✅ Event Authority:", eventAuthority.toString());
+    console.log("✅ Denylist Account:", denylistAccount.toString());
 
     // Prepare CCTP invoke parameters
+    // For CCTP, when sending to Ethereum (domain 0), the addresses should be 32-byte arrays
+    // representing the Ethereum address (20 bytes) padded with zeros
+    const ethereumAddress = "DFEA825Af7A181dc49Fd306bA43D96216CB2AF34";
+    const paddedAddress = Buffer.alloc(32);
+    Buffer.from(ethereumAddress.replace('0x', ''), 'hex').copy(paddedAddress, 12); // Copy to last 20 bytes
+    
     const params = {
       amount: new anchor.BN(2000000), // 2 USDC
-      destinationDomain: 0, // Sepolia devnet
-      mintRecipient: new PublicKey("11111111111111111111111111111111"), // Mock recipient
-      destinationCaller: new PublicKey("11111111111111111111111111111111"), // Mock caller
+      destinationDomain: 0, // Ethereum mainnet
+      mintRecipient: new PublicKey(paddedAddress), // Ethereum recipient address (32-byte format)
+      destinationCaller: new PublicKey(paddedAddress), // Ethereum caller address (32-byte format)
       maxFee: new anchor.BN(1000000), // 1 USDC max fee
-      minFinalityThreshold: new anchor.BN(1), // Minimum finality threshold
+      minFinalityThreshold: 1, // Minimum finality threshold
     };
 
     console.log("📋 CCTP Invoke parameters:");
@@ -197,7 +203,6 @@ async function testCctpInvoke() {
           tokenMessengerMinter: tokenMessengerMinter,
           eventRentPayer: eventRentPayer.publicKey,
           senderAuthorityPda: senderAuthorityPda,
-          denylistAccount: denylistAccount,
           messageTransmitter: messageTransmitterPda,
           tokenMessenger: tokenMessengerPda,
           remoteTokenMessenger: remoteTokenMessengerPda,
@@ -207,10 +212,10 @@ async function testCctpInvoke() {
           messageSentEventData: messageSentEventData.publicKey,
           messageTransmitterProgram: messageTransmitter,
           tokenMessengerMinterProgram: tokenMessengerMinter,
-          tokenProgram: tokenProgram,
           systemProgram: systemProgram,
           eventAuthority: eventAuthority,
           program: tokenMessengerMinter,
+          denylistAccount: denylistAccount,
         })
         .signers([user, eventRentPayer, messageSentEventData])
         .rpc();

@@ -40,4 +40,4 @@ echo "✅ Wallet balance: $BALANCE"
 echo "✅ Wallet found, running test..."
 
 # Run the test script
-npx ts-node testDeposit.ts 
+npx ts-node testDepositv3.ts 

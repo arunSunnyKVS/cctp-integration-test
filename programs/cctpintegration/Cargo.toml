@@ -21,3 +21,5 @@ anchor-lang = "0.31.0"
 anchor-spl = "0.31.0"
 config = "0.15.13"
 libsecp256k1 = "=0.7.1"
+token-messenger-minter-v2 = { path = "src/v2/token-messenger-minter-v2", features = ["cpi"] }
+message-transmitter-v2 = { path = "src/v2/message-transmitter-v2", features = ["cpi"] }
