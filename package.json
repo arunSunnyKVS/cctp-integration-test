@@ -7,7 +7,9 @@
     "test:deposit:devnet": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node testDeposit.ts",
     "test:depositv3": "ts-node testDepositv3.ts",
     "test:depositv3:devnet": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node testDepositv3.ts",
-    "get-attestation": "ts-node getAttestation.ts"
+    "get-attestation": "ts-node getAttestation.ts",
+    "send-usdc": "ts-node sendUSDC.ts",
+    "send-sol": "ts-node sendSol.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
